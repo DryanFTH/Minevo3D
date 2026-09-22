@@ -1,0 +1,77 @@
+{
+    "name": "Minevo3D",
+    "version": "1.0.0",
+    "description": "Animated 3D Minecraft character viewer for React and vanilla JS with real bendable arms and legs, skins, capes, and animations. Built on three.js.",
+    "keywords": [
+        "minecraft",
+        "minecraft-skin",
+        "skin-viewer",
+        "minecraft-cape",
+        "3d-character",
+        "character-viewer",
+        "threejs",
+        "webgl",
+        "react",
+        "react-component",
+        "typescript"
+    ],
+    "license": "MIT",
+    "author": "DryanFTH",
+    "homepage": "https://github.com/DryanFTH/Minevo3D",
+    "repository": "DryanFTH/Minevo3D",
+    "sideEffects": false,
+    "type": "module",
+    "main": "./dist/minevo3d.cjs",
+    "module": "./dist/minevo3d.js",
+    "types": "./dist/minevo3d.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        },
+        "./react": {
+            "types": "./dist/ReactMinevo3D.d.ts",
+            "import": "./dist/ReactMinevo3D.js",
+            "require": "./dist/ReactMinevo3D.cjs"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "dev": "vite --config examples/vite.config.ts",
+        "build": "vite build",
+        "build:example": "vite build --config examples/vite.config.ts",
+        "preview:example": "vite preview --config examples/vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "typecheck:example": "tsc --noEmit -p examples/tsconfig.json",
+        "prepublishOnly": "pnpm typecheck && pnpm build",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "peerDependencies": {
+        "react": ">=18",
+        "three": ">=0.185.1"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.3.3",
+        "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+        "@types/node": "^26.6.5",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "18.3.1",
+        "@types/three": "^0.186.0",
+        "@typescript/typescript6": "^6.0.2",
+        "@vitejs/plugin-react": "^6.1.2",
+        "clsx": "^2.1.1",
+        "highlight.js": "^11.12.0",
+        "prettier": "^3.9.10",
+        "react-dom": "^18.3.1",
+        "rollup-plugin-visualizer": "^7.1.1",
+        "tailwind-merge": "^3.7.0",
+        "tailwindcss": "^4.3.3",
+        "typescript": "^7.0.2",
+        "unplugin-dts": "^1.1.2",
+        "vite": "^8.3.4"
+    }
+}
