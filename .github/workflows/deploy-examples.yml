@@ -18,33 +18,33 @@ jobs:
     build:
         runs-on: ubuntu-latest
         steps:
-        - uses: actions/checkout@v4
+            - uses: actions/checkout@v4
 
-        - uses: pnpm/action-setup@v4
-            with:
-            version: 10
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 10
 
-        - uses: actions/setup-node@v4
-            with:
-            node-version: 22
-            cache: pnpm
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
 
-        - run: pnpm install --frozen-lockfile
+            - run: pnpm install --frozen-lockfile
 
-        - run: pnpm typecheck && pnpm typecheck:example
+            - run: pnpm typecheck && pnpm typecheck:example
 
-        - name: Build examples
-            run: >
-            pnpm run build:example
-            --base=/${{ github.event.repository.name }}/
-            --outDir "$GITHUB_WORKSPACE/dist-example"
-            --emptyOutDir
+            - name: Build examples
+              run: >
+                  pnpm run build:example
+                  --base=/${{ github.event.repository.name }}/
+                  --outDir "$GITHUB_WORKSPACE/dist-example"
+                  --emptyOutDir
 
-        - uses: actions/configure-pages@v5
+            - uses: actions/configure-pages@v5
 
-        - uses: actions/upload-pages-artifact@v3
-            with:
-            path: dist-example
+            - uses: actions/upload-pages-artifact@v3
+              with:
+                  path: dist-example
 
     deploy:
         needs: build
@@ -54,4 +54,4 @@ jobs:
             url: ${{ steps.deployment.outputs.page_url }}
         steps:
             - id: deployment
-            uses: actions/deploy-pages@v4
+              uses: actions/deploy-pages@v4
