@@ -12,7 +12,7 @@ importers:
         specifier: '>=18'
         version: 18.3.1
       three:
-        specifier: 0.185.1
+        specifier: '>=0.185.1'
         version: 0.185.1
     devDependencies:
       '@tailwindcss/vite':
