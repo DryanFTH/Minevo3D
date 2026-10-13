@@ -77,7 +77,7 @@ export class CapeTexture {
         this.canvas.width = 64;
         this.canvas.height = 32;
         const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) throw new Error('Canvas 2D tidak tersedia.');
+        if (!ctx) throw new Error('Canvas 2D context is unavailable.');
         this.ctx = ctx;
         ctx.imageSmoothingEnabled = false;
         this.texture = new CanvasTexture(this.canvas);

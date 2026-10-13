@@ -32,8 +32,8 @@ const BLEND = 1.6;
 type CapeMaterial = MeshLambertMaterial | MeshBasicMaterial;
 
 /**
- * Cape: satu SkinnedMesh dengan 3 bone berantai sehingga bisa melengkung (bukan kotak kaku).
- * Dipasang di punggung atas, sisi luar menghadap ke belakang (-z).
+ * A cape made from a single SkinnedMesh with a chain of 3 bones, allowing it to bend instead of remaining rigid.
+ * Attached to the upper back, with the outer side facing backward (-z).
  */
 export class CapeMesh {
     /** Attached to the torso and hidden until a cape is loaded. */
@@ -101,9 +101,9 @@ export class CapeMesh {
     }
 
     /**
-     * @param swing ayunan pangkal ke belakang (derajat; + = ujung cape menjauh dari punggung)
-     * @param bend tambahan tekukan bagian bawah (derajat), dibagi rata ke bone tengah & ujung
-     * @param sway goyang ke samping (derajat; + = ujung cape ke kiri karakter)
+     * @param swing Backward rotation at the base (degrees; + = cape tip moves away from the back)
+     * @param bend Additional bend at the lower section (degrees), split evenly between the middle and tip bones
+     * @param sway Side-to-side rotation (degrees; + = cape tip moves to the character's left)
      */
     apply(swing: number, bend: number, sway: number) {
         const [root, middle, tip] = this.bones;
@@ -116,7 +116,7 @@ export class CapeMesh {
         (this.mesh.material as CapeMaterial).wireframe = v;
     }
 
-    /** Tukar jenis material (lit/unlit) tanpa membangun ulang geometri. */
+    /** Switch material type (lit/unlit) without rebuilding the geometry. */
     refreshMaterials() {
         const old = this.mesh.material as Material;
         this.mesh.material = this.makeMaterial();
@@ -130,20 +130,20 @@ export class CapeMesh {
 }
 
 export interface CapePhysicsOptions {
-    /** Matikan untuk menerapkan target langsung (tanpa pegas). Default true. */
+    /** Disable to apply targets directly without spring motion. Defaults to true. */
     enabled?: boolean;
-    /** Kekakuan pegas. Makin besar makin cepat mengikuti. Default 60. */
+    /** Spring stiffness. Higher values track targets faster. Defaults to 60. */
     stiffness?: number;
-    /** Redaman. Makin kecil makin banyak "memantul". Default 7 (sedikit underdamped). */
+    /** Damping. Lower values produce more bounce. Defaults to 7 (slightly underdamped). */
     damping?: number;
-    /** Seberapa kuat cape ingin menggantung vertikal saat badan condong (0 = kaku mengikuti badan, 1 = penuh). Default 0.7. */
+    /** How strongly the cape hangs vertically when the torso leans (0 = follows the torso rigidly, 1 = fully vertical). Defaults to 0.7. */
     gravity?: number;
 }
 
 /**
- * Gerak sekunder cape: pegas teredam untuk tiap sudut (swing, bend, sway) menuju target dari pose.
- * Target = sudut gantung + channel `cape` pada pose + kompensasi gravitasi terhadap kemiringan badan.
- * Hasilnya cape tertinggal dan memantul sedikit saat badan atau animasi bergerak cepat. Deterministik.
+ * Secondary cape motion: a damped spring for each angle (swing, bend, sway) that tracks targets derived from the pose.
+ * Target = hanging angle + the pose's `cape` channel + gravity compensation for torso tilt.
+ * The cape lags and bounces slightly when the torso or animation moves quickly. Deterministic.
  */
 export class CapeDynamics {
     enabled = true;
