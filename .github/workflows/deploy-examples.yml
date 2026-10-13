@@ -2,8 +2,15 @@ name: Deploy examples to GitHub Pages
 
 on:
     push:
-        tags:
-            - 'v*'
+        branches:
+            - master
+        paths:
+            - 'examples/**'
+    pull_request:
+        branches:
+            - master
+        paths:
+            - 'examples/**'
 
 permissions:
     contents: read
