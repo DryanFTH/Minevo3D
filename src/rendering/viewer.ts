@@ -11,6 +11,7 @@ import {
     SkeletonHelper,
     WebGLRenderer,
 } from 'three';
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import type { AnimationFn, AnimationSource } from '@/animation/animations';
 import { AnimationController, type PlayOptions } from '@/animation/controller';
@@ -30,6 +31,7 @@ import {
     type CameraOptions,
     type CameraSetOptions,
     type CameraState,
+    type OrbitControlsOptions,
 } from '@/rendering/camera';
 import {
     type CameraLightOptions,
@@ -45,15 +47,14 @@ import {
     SkinTexture,
 } from '@/skin/skin';
 import { type SetSkinOptions, SkinSwitcher } from '@/skin/skinSwitcher';
-import type { PartialPose, Pose } from '@/types/types';
+import type { PartialPartOffsets, PartialPose, Pose } from '@/types/types';
 
-export interface ControlsOptions {
-    /** Rotate the camera by dragging. Default: true. */
-    rotate?: boolean;
-    /** Zoom with the scroll wheel or pinch. Default: false, so page scrolling is not affected. */
-    zoom?: boolean;
-    /** Scroll and pinch zoom sensitivity. Default: 1. */
-    zoomSpeed?: number;
+/**
+ * User input settings. Includes every `OrbitControlsOptions` field (rotate, zoom, pan, speeds, damping,
+ * distance limits, mouse and touch mapping, ...) plus the options below. For anything not listed, change the
+ * live `OrbitControls` instance available as `viewer.controls`.
+ */
+export interface ControlsOptions extends OrbitControlsOptions {
     /** Alias for the top-level `autoRotate` option. The top-level option takes precedence. */
     autoRotate?: AutoRotateInput;
     /** Double-clicking the canvas resets the camera to its starting view. Default: false. */
@@ -99,6 +100,13 @@ export interface ViewerOptions {
     showOverlay?: boolean;
 
     blendWidth?: number;
+
+    /**
+     * Position offsets for body parts (head, torso, armL, armR, legL, legR) in skin pixels, added to each
+     * part's normal position. Animations add to these (`pose.offset`) instead of replacing them. Change them
+     * later with `viewer.rig.setPartOffset()` / `setPartOffsets()`.
+     */
+    partOffsets?: PartialPartOffsets;
 
     animation?: AnimationSource;
 
@@ -164,8 +172,12 @@ export interface ViewerOptions {
 export class CharacterViewer {
     readonly scene = new Scene();
     readonly renderer: WebGLRenderer;
-    readonly cameraController = new CameraController();
-    readonly camera: PerspectiveCamera = this.cameraController.camera;
+    readonly cameraController: CameraController;
+    /**
+     * The camera used for rendering: the orbit view plus offsets from the animation `camera` channel.
+     * Read it (for raycasting, projection, ...) but do not move it; use `controls` or the camera methods instead.
+     */
+    readonly camera: PerspectiveCamera;
     readonly skin: SkinTexture;
     readonly capeTexture: CapeTexture;
     readonly rig: CharacterRig;
@@ -184,12 +196,10 @@ export class CharacterViewer {
     private helpers: SkeletonHelper[] = [];
     private showBones = false;
 
-    private ctl = { rotate: true, zoom: false, zoomSpeed: 1, resetOnDoubleClick: false };
+    private ctl = { rotate: true, zoom: false, pan: false, resetOnDoubleClick: false };
     readonly rotator = new AutoRotator();
     private autoRotateExplicit = false;
     private controlsAutoRotate: AutoRotateInput | undefined;
-    private pointers = new Map<number, { x: number; y: number }>();
-    private lastPinch = 0;
 
     private raf = 0;
     private last = 0;
@@ -214,6 +224,15 @@ export class CharacterViewer {
         el.style.width = '100%';
         el.style.height = '100%';
         container.appendChild(el);
+
+        this.cameraController = new CameraController(el, opts.camera);
+        this.camera = this.cameraController.camera;
+        this.cameraController.onUserChange = () => {
+            this.rotator.interact();
+            this.emitCamera();
+        };
+        this.controls.addEventListener('start', this.onControlsStart);
+        this.controls.addEventListener('end', this.onControlsEnd);
 
         // three.js r152-r154 uses legacy lights; r155 and later use physically based units (scaled by PI).
         const lightScale =
@@ -266,6 +285,7 @@ export class CharacterViewer {
             armModel: opts.armModel,
             showOverlay: opts.showOverlay,
             blendWidth: opts.blendWidth,
+            partOffsets: opts.partOffsets,
             wireframe: opts.wireframe,
             unlit: this.lightRig.unlit,
         });
@@ -293,15 +313,9 @@ export class CharacterViewer {
         this.setGrid(opts.grid ?? false);
         this.setShadow(opts.shadow ?? true);
         this.setShowBones(opts.showBones ?? false);
-        this.cameraController.set(opts.camera ?? {}, { immediate: true, asHome: true });
         this.setControls(opts.controls);
         if (opts.autoRotate !== undefined) this.setAutoRotate(opts.autoRotate);
 
-        el.addEventListener('pointerdown', this.onPointerDown);
-        el.addEventListener('pointermove', this.onPointerMove);
-        el.addEventListener('pointerup', this.onPointerUp);
-        el.addEventListener('pointercancel', this.onPointerUp);
-        el.addEventListener('wheel', this.onWheel, { passive: false });
         el.addEventListener('dblclick', this.onDoubleClick);
         el.addEventListener('pointerenter', this.onPointerEnter);
         el.addEventListener('pointerleave', this.onPointerLeave);
@@ -409,6 +423,21 @@ export class CharacterViewer {
         this.rebuildHelpers();
     }
 
+    // ----- Camera: OrbitControls -----
+
+    /**
+     * The three.js `OrbitControls` instance that handles user input. Use it for full customization, e.g.
+     * `viewer.controls.enableDamping = true`, `viewer.controls.minDistance = 20`,
+     * `viewer.controls.listenToKeyEvents(window)`, or `viewer.controls.addEventListener('change', ...)`.
+     *
+     * It drives `controls.object` (the orbit camera, without animation offsets), not `viewer.camera`.
+     * Settings passed through the `controls` option are applied again by `setControls()`; properties
+     * you change directly stay as they are until then.
+     */
+    get controls(): OrbitControls {
+        return this.cameraController.controls;
+    }
+
     // ----- Camera: FOV and zoom -----
 
     /** Set multiple camera options at once. */
@@ -480,35 +509,31 @@ export class CharacterViewer {
         return this.cameraController.getState();
     }
 
+    /**
+     * Apply user input settings. Settings that are omitted return to their defaults (see `ControlsOptions`).
+     * `false` disables all input; `true` or `undefined` uses the defaults (drag to rotate).
+     */
     setControls(c?: boolean | ControlsOptions) {
-        if (c === false)
-            this.ctl = {
-                rotate: false,
-                zoom: false,
-                zoomSpeed: 1,
-                resetOnDoubleClick: false,
-            };
-        else if (c === true || c === undefined)
-            this.ctl = {
-                rotate: true,
-                zoom: false,
-                zoomSpeed: 1,
-                resetOnDoubleClick: false,
-            };
-        else {
-            this.ctl = {
-                rotate: c.rotate ?? true,
-                zoom: c.zoom ?? false,
-                zoomSpeed: c.zoomSpeed ?? 1,
-                resetOnDoubleClick: c.resetOnDoubleClick ?? false,
-            };
-        }
+        const o: ControlsOptions =
+            c === false
+                ? { rotate: false, zoom: false, pan: false }
+                : c === true || c === undefined
+                  ? {}
+                  : c;
+        this.ctl = {
+            rotate: o.rotate ?? true,
+            zoom: o.zoom ?? false,
+            pan: o.pan ?? false,
+            resetOnDoubleClick: o.resetOnDoubleClick ?? false,
+        };
+        this.cameraController.configureControls(o);
         // controls.autoRotate is used only when the top-level autoRotate option is not set.
         this.controlsAutoRotate = c && typeof c === 'object' ? c.autoRotate : undefined;
         if (!this.autoRotateExplicit) this.rotator.set(this.controlsAutoRotate ?? false);
-        this.renderer.domElement.style.touchAction =
-            this.ctl.rotate || this.ctl.zoom ? 'none' : 'auto';
-        this.renderer.domElement.style.cursor = this.ctl.rotate ? 'grab' : 'default';
+        const el = this.renderer.domElement;
+        el.style.touchAction =
+            this.ctl.rotate || this.ctl.zoom || this.ctl.pan ? 'none' : 'auto';
+        el.style.cursor = this.idleCursor();
     }
 
     // ----- Automatic rotation -----
@@ -562,15 +587,12 @@ export class CharacterViewer {
         cancelAnimationFrame(this.raf);
         this.skinSwitcher.cancel();
         this.capeSwitcher.cancel();
-        this.cameraController.stopAnimations();
+        this.controls.removeEventListener('start', this.onControlsStart);
+        this.controls.removeEventListener('end', this.onControlsEnd);
+        this.cameraController.dispose();
         this.resizeObserver.disconnect();
         this.intersectionObserver?.disconnect();
         const el = this.renderer.domElement;
-        el.removeEventListener('pointerdown', this.onPointerDown);
-        el.removeEventListener('pointermove', this.onPointerMove);
-        el.removeEventListener('pointerup', this.onPointerUp);
-        el.removeEventListener('pointercancel', this.onPointerUp);
-        el.removeEventListener('wheel', this.onWheel);
         el.removeEventListener('dblclick', this.onDoubleClick);
         el.removeEventListener('pointerenter', this.onPointerEnter);
         el.removeEventListener('pointerleave', this.onPointerLeave);
@@ -650,40 +672,21 @@ export class CharacterViewer {
         this.renderer.render(this.scene, this.camera);
     };
 
-    private onPointerDown = (e: PointerEvent) => {
-        if (!this.ctl.rotate && !this.ctl.zoom) return;
-        this.renderer.domElement.setPointerCapture(e.pointerId);
-        this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    private idleCursor() {
+        return this.ctl.rotate || this.ctl.pan ? 'grab' : 'default';
+    }
+
+    // OrbitControls fires 'start' on pointer down / wheel and 'end' when the interaction finishes.
+    private onControlsStart = () => {
         this.renderer.domElement.style.cursor = 'grabbing';
         this.rotator.setHold(true);
         this.rotator.interact();
     };
 
-    private onPointerMove = (e: PointerEvent) => {
-        const p = this.pointers.get(e.pointerId);
-        if (!p) return;
+    private onControlsEnd = () => {
+        this.rotator.setHold(false);
         this.rotator.interact();
-        if (this.pointers.size === 1 && this.ctl.rotate) {
-            this.cameraController.rotateBy(
-                -(e.clientX - p.x) * 0.45,
-                -(e.clientY - p.y) * 0.45,
-            );
-            this.emitCamera();
-        }
-        this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (this.pointers.size === 2 && this.ctl.zoom) {
-            const [a, b] = this.pointers.values();
-            if (!a || !b) return;
-
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            if (this.lastPinch && dist > 0) {
-                this.cameraController.zoomBy(
-                    Math.pow(dist / this.lastPinch, this.ctl.zoomSpeed),
-                );
-                this.emitCamera();
-            }
-            this.lastPinch = dist;
-        }
+        this.renderer.domElement.style.cursor = this.idleCursor();
     };
 
     private onPointerEnter = (e: PointerEvent) => {
@@ -691,29 +694,6 @@ export class CharacterViewer {
     };
     private onPointerLeave = (e: PointerEvent) => {
         if (e.pointerType !== 'touch') this.rotator.setHover(false);
-    };
-
-    private onPointerUp = (e: PointerEvent) => {
-        if (!this.pointers.delete(e.pointerId)) return;
-        this.lastPinch = 0;
-        this.rotator.setHold(this.pointers.size > 0);
-        this.rotator.interact();
-        if (this.pointers.size === 0)
-            this.renderer.domElement.style.cursor = this.ctl.rotate ? 'grab' : 'default';
-    };
-
-    private onWheel = (e: WheelEvent) => {
-        if (!this.ctl.zoom) return;
-        e.preventDefault();
-        this.rotator.interact();
-        const dy =
-            e.deltaMode === 1
-                ? e.deltaY * 16
-                : e.deltaMode === 2
-                  ? e.deltaY * 100
-                  : e.deltaY;
-        this.cameraController.zoomBy(Math.exp(-dy * 0.0015 * this.ctl.zoomSpeed));
-        this.emitCamera();
     };
 
     private onDoubleClick = () => {
