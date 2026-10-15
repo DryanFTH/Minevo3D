@@ -34,6 +34,7 @@ export class AnimationController {
         zoom: 1,
         fov: 40,
         keepFraming: false,
+        target: [0, 16, 0],
     });
 
     private current: AnimationFn | null = null;
