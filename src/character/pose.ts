@@ -1,7 +1,8 @@
-import type { JointPose, PartialPose, Pose, Rot3 } from '@/types/types';
+import type { JointPose, PartialPose, Pose, Rot3, Vec3 } from '@/types/types';
 
 const rot = (): Rot3 => ({ pitch: 0, yaw: 0, roll: 0 });
 const joint = (): JointPose => ({ forward: 0, out: 0, bend: 0, bendIn: 0 });
+const vec = (): Vec3 => ({ x: 0, y: 0, z: 0 });
 
 /** Neutral pose: standing straight with arms hanging. */
 export const REST_POSE: Pose = {
@@ -21,6 +22,14 @@ export const REST_POSE: Pose = {
         target: { x: 0, y: 0, z: 0 },
     },
     cape: { swing: 0, bend: 0, sway: 0 },
+    offset: {
+        head: vec(),
+        torso: vec(),
+        armL: vec(),
+        armR: vec(),
+        legL: vec(),
+        legR: vec(),
+    },
 };
 
 /** Relaxed floating pose: leaning back, one hand at the cheek, and one arm raised. */
@@ -32,6 +41,12 @@ export const POSE_FLOATING: PartialPose = {
     armR: { forward: 5, out: 118, bend: 60, bendIn: -15 },
     legL: { forward: 70, out: 8, bend: 90 },
     legR: { forward: 40, out: 25, bend: 60 },
+    offset: {
+        armR: {
+            x: 2,
+            y: -2
+        }
+    }
 };
 
 /** Sitting pose with horizontal thighs and vertical shins. */

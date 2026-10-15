@@ -21,12 +21,32 @@ import { CapeTexture } from '@/cape/cape';
 import { CapeDynamics, CapeMesh, type CapePhysicsOptions } from '@/cape/capeRig';
 import type { SkinTexture } from '@/skin/skin';
 import { type Region, remapUV } from '@/texture/uv';
-import type { JointPose, LimbName, Pose, Rot3 } from '@/types/types';
+import type {
+    JointPose,
+    LimbName,
+    PartName,
+    PartOffsets,
+    PartialPartOffsets,
+    Pose,
+    Rot3,
+    Vec3,
+} from '@/types/types';
 
 export type ArmModel = 'auto' | 'classic' | 'slim';
 
 const SEGMENTS = 16;
 const D2R = Math.PI / 180;
+
+const PART_NAMES: readonly PartName[] = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'];
+
+const zeroOffsets = (): PartOffsets => ({
+    head: { x: 0, y: 0, z: 0 },
+    torso: { x: 0, y: 0, z: 0 },
+    armL: { x: 0, y: 0, z: 0 },
+    armR: { x: 0, y: 0, z: 0 },
+    legL: { x: 0, y: 0, z: 0 },
+    legR: { x: 0, y: 0, z: 0 },
+});
 
 interface RigState {
     skin: SkinTexture;
@@ -221,6 +241,12 @@ export interface RigOptions {
 
     /** Cape spring simulation settings. */
     capePhysics?: boolean | CapePhysicsOptions;
+
+    /**
+     * Position offsets for body parts (skin pixels), added to each part's normal position. Animations
+     * add their own offsets (`pose.offset`) on top of these instead of replacing them. See PartOffsets.
+     */
+    partOffsets?: PartialPartOffsets;
 }
 
 /**
@@ -241,6 +267,20 @@ export class CharacterRig {
     /** Called whenever an arm is rebuilt (for example, when switching classic/slim). */
     onRebuild?: () => void;
 
+    /** Normal (structural) position of each part, before any offsets. */
+    private readonly base: Record<PartName, Vector3> = {
+        head: new Vector3(0, 16, 0),
+        torso: new Vector3(0, 12, 0),
+        armL: new Vector3(6, 12, 0),
+        armR: new Vector3(-6, 12, 0),
+        legL: new Vector3(2, 12, 0),
+        legR: new Vector3(-2, 12, 0),
+    };
+    /** Offsets set on the rig. Animations never write to these. */
+    private readonly offsets: PartOffsets = zeroOffsets();
+    /** Offsets from the pose applied last (the animation's part), kept so a rig change can re-place parts at once. */
+    private poseOffset: PartOffsets | undefined;
+
     private state: RigState;
     private armMode: ArmModel;
     private statics: Mesh[] = [];
@@ -255,10 +295,10 @@ export class CharacterRig {
             unlit: opts.unlit ?? false,
         };
         this.armMode = opts.armModel ?? 'auto';
+        this.assignOffsets(opts.partOffsets);
 
         const headBase = this.box(8, 8, 8, 0, [0, 0, 8, 8, 8]);
         const headOver = this.box(8, 8, 8, 1, [32, 0, 8, 8, 8], true);
-        this.head.position.set(0, 16, 0);
         this.head.add(headBase, headOver);
 
         const bodyBase = this.box(8, 12, 4, 0, [16, 16, 8, 12, 4]);
@@ -267,7 +307,6 @@ export class CharacterRig {
         body.position.set(0, 6, 0);
         body.add(bodyBase, bodyOver);
 
-        this.torso.position.set(0, 12, 0);
         this.torso.add(this.head, body);
         this.object.add(this.torso);
 
@@ -301,8 +340,6 @@ export class CharacterRig {
                 this.state,
             ),
         };
-        this.limbs.legL.holder.position.set(2, 12, 0);
-        this.limbs.legR.holder.position.set(-2, 12, 0);
         this.object.add(this.limbs.legL.holder, this.limbs.legR.holder);
         this.torso.add(this.limbs.armL.holder, this.limbs.armR.holder);
         this.refreshArms();
@@ -340,6 +377,10 @@ export class CharacterRig {
         setRot(this.torso, p.torso);
         setRot(this.head, p.head);
 
+        // Part positions: normal position + rig offset + animation offset (the animation only adds to the rig).
+        this.poseOffset = p.offset;
+        this.placeParts();
+
         const apply = (limb: Limb, side: 1 | -1, j: JointPose, bendSign: 1 | -1) => {
             limb.root.rotation.set(-j.forward * D2R, 0, j.out * D2R * side);
             limb.joint.rotation.set(bendSign * j.bend * D2R, 0, -j.bendIn * D2R * side);
@@ -357,6 +398,82 @@ export class CharacterRig {
                 this.capeDynamics.sway,
             );
         }
+    }
+
+    // ---------------------------------------------------------------- Part offsets
+
+    private objectOf(part: PartName): Object3D {
+        switch (part) {
+            case 'head':
+                return this.head;
+            case 'torso':
+                return this.torso;
+            default:
+                return this.limbs[part].holder;
+        }
+    }
+
+    /** Set every part's position to: normal position + rig offset + the animation's offset. */
+    private placeParts() {
+        for (const part of PART_NAMES) {
+            const b = this.base[part];
+            const o = this.offsets[part];
+            const a = this.poseOffset?.[part];
+            this.objectOf(part).position.set(
+                b.x + o.x + (a?.x ?? 0),
+                b.y + o.y + (a?.y ?? 0),
+                b.z + o.z + (a?.z ?? 0),
+            );
+        }
+    }
+
+    private assignOffsets(src: PartialPartOffsets | undefined) {
+        for (const part of PART_NAMES) {
+            const v = src?.[part];
+            const cur = this.offsets[part];
+            if (v?.x !== undefined && Number.isFinite(v.x)) cur.x = v.x;
+            if (v?.y !== undefined && Number.isFinite(v.y)) cur.y = v.y;
+            if (v?.z !== undefined && Number.isFinite(v.z)) cur.z = v.z;
+        }
+    }
+
+    /**
+     * Move one body part away from its normal position by `offset` (skin pixels). Only the axes you pass
+     * change; the others keep their current value. Takes effect immediately and keeps working while an
+     * animation plays: the animation's own offsets (`pose.offset`) are added on top.
+     * See PartOffsets for the coordinate space.
+     */
+    setPartOffset(part: PartName, offset: Partial<Vec3>) {
+        this.assignOffsets({ [part]: offset });
+        this.placeParts();
+    }
+
+    /**
+     * Replace all rig offsets. Parts and axes that are not given go back to 0, so the result depends only
+     * on the object passed in (`undefined` clears everything).
+     */
+    setPartOffsets(offsets?: PartialPartOffsets) {
+        const zero = zeroOffsets();
+        for (const part of PART_NAMES) Object.assign(this.offsets[part], zero[part]);
+        this.assignOffsets(offsets);
+        this.placeParts();
+    }
+
+    /** Offset set on the rig for one part (a copy; does not include the animation's offset). */
+    getPartOffset(part: PartName): Vec3 {
+        return { ...this.offsets[part] };
+    }
+
+    /** Offsets set on the rig for all parts (a copy; does not include the animation's offsets). */
+    getPartOffsets(): PartOffsets {
+        const out = zeroOffsets();
+        for (const part of PART_NAMES) Object.assign(out[part], this.offsets[part]);
+        return out;
+    }
+
+    /** Set all rig offsets back to 0. */
+    resetPartOffsets() {
+        this.setPartOffsets();
     }
 
     /** Show or hide the cape. When shown, simulation starts at the target without an initial swing. */
@@ -445,8 +562,9 @@ export class CharacterRig {
                 limb.build({ ...limb.cfg, w });
                 rebuilt = true;
             }
-            limb.holder.position.set(side * (4 + w / 2), 12, 0);
+            this.base[name].set(side * (4 + w / 2), 12, 0);
         }
+        this.placeParts();
         if (rebuilt) this.onRebuild?.();
     }
 
