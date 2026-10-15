@@ -26,7 +26,10 @@ import type {
     LimbName,
     PartName,
     PartOffsets,
+    PartRotation,
+    PartRotations,
     PartialPartOffsets,
+    PartialPartRotations,
     Pose,
     Rot3,
     Vec3,
@@ -47,6 +50,26 @@ const zeroOffsets = (): PartOffsets => ({
     legL: { x: 0, y: 0, z: 0 },
     legR: { x: 0, y: 0, z: 0 },
 });
+
+const zeroRot = (): Rot3 => ({ pitch: 0, yaw: 0, roll: 0 });
+const zeroJoint = (): JointPose => ({ forward: 0, out: 0, bend: 0, bendIn: 0 });
+
+const zeroRotations = (): PartRotations => ({
+    head: zeroRot(),
+    torso: zeroRot(),
+    armL: zeroJoint(),
+    armR: zeroJoint(),
+    legL: zeroJoint(),
+    legR: zeroJoint(),
+});
+
+/** Used when no pose has been applied yet, so manual rotations still take effect on their own. */
+const REST_ROT: Readonly<Rot3> = Object.freeze(zeroRot());
+const REST_JOINT: Readonly<JointPose> = Object.freeze(zeroJoint());
+
+/** Rotation fields of every part, used to validate and copy manual rotations. */
+const ROT_FIELDS: readonly (keyof Rot3)[] = ['pitch', 'yaw', 'roll'];
+const JOINT_FIELDS: readonly (keyof JointPose)[] = ['forward', 'out', 'bend', 'bendIn'];
 
 interface RigState {
     skin: SkinTexture;
@@ -247,6 +270,13 @@ export interface RigOptions {
      * add their own offsets (`pose.offset`) on top of these instead of replacing them. See PartOffsets.
      */
     partOffsets?: PartialPartOffsets;
+
+    /**
+     * Manual rotation (degrees) of the head, torso, and the arm and leg joints. This is the BASE rotation of
+     * each part: animations and poses (`pose.head`, `pose.armL`, ...) are added on top of it instead of
+     * replacing it. Change it later with `rig.setPartRotation()` / `setPartRotations()`. See PartRotations.
+     */
+    partRotations?: PartialPartRotations;
 }
 
 /**
@@ -281,6 +311,11 @@ export class CharacterRig {
     /** Offsets from the pose applied last (the animation's part), kept so a rig change can re-place parts at once. */
     private poseOffset: PartOffsets | undefined;
 
+    /** Manual (base) rotation of each part. Animations never write to these; they are added to by the pose. */
+    private readonly rotations: PartRotations = zeroRotations();
+    /** The pose applied last, kept so a manual rotation change can take effect at once, even while paused. */
+    private lastPose: Pose | undefined;
+
     private state: RigState;
     private armMode: ArmModel;
     private statics: Mesh[] = [];
@@ -296,6 +331,7 @@ export class CharacterRig {
         };
         this.armMode = opts.armModel ?? 'auto';
         this.assignOffsets(opts.partOffsets);
+        this.assignRotations(opts.partRotations);
 
         const headBase = this.box(8, 8, 8, 0, [0, 0, 8, 8, 8]);
         const headOver = this.box(8, 8, 8, 1, [32, 0, 8, 8, 8], true);
@@ -366,38 +402,140 @@ export class CharacterRig {
 
     /**
      * Apply a full pose to every bone. Called each frame by the viewer.
+     * Head, torso, and limb rotations are the manual rotation of the rig (`setPartRotation`) plus the
+     * rotation in the pose, so the animation adds to the manual value instead of overwriting it.
      * @param dt Seconds since the previous frame for cape spring simulation. 0 disables spring motion.
      */
     applyPose(p: Pose, dt = 0) {
         const setRot = (o: Object3D, r: Rot3) =>
             o.rotation.set(r.pitch * D2R, r.yaw * D2R, -r.roll * D2R, 'YXZ');
 
+        this.lastPose = p;
+
         this.object.position.set(p.position.x, p.position.y, p.position.z);
         setRot(this.object, p.rotation);
-        setRot(this.torso, p.torso);
-        setRot(this.head, p.head);
 
         // Part positions: normal position + rig offset + animation offset (the animation only adds to the rig).
         this.poseOffset = p.offset;
         this.placeParts();
 
-        const apply = (limb: Limb, side: 1 | -1, j: JointPose, bendSign: 1 | -1) => {
-            limb.root.rotation.set(-j.forward * D2R, 0, j.out * D2R * side);
-            limb.joint.rotation.set(bendSign * j.bend * D2R, 0, -j.bendIn * D2R * side);
-        };
-        apply(this.limbs.armL, 1, p.armL, -1);
-        apply(this.limbs.armR, -1, p.armR, -1);
-        apply(this.limbs.legL, 1, p.legL, 1);
-        apply(this.limbs.legR, -1, p.legR, 1);
+        // Part rotations: manual rotation + animation rotation.
+        this.placeRotations();
 
         if (this.cape.visible) {
-            this.capeDynamics.update(p, dt);
+            // The cape follows the real torso angle, which includes the manual rotation.
+            const tilt = this.rotations.torso.pitch;
+            const cp =
+                tilt === 0
+                    ? p
+                    : { ...p, torso: { ...p.torso, pitch: p.torso.pitch + tilt } };
+            this.capeDynamics.update(cp, dt);
             this.cape.apply(
                 this.capeDynamics.swing,
                 this.capeDynamics.bend,
                 this.capeDynamics.sway,
             );
         }
+    }
+
+    // ---------------------------------------------------------------- Part rotations
+
+    /** Set the rotation of the head, torso, and limb joints to: manual rotation + the last pose's rotation. */
+    private placeRotations() {
+        const p = this.lastPose;
+        const r = this.rotations;
+
+        const setRot = (o: Object3D, base: Rot3, a: Readonly<Rot3>) =>
+            o.rotation.set(
+                (base.pitch + a.pitch) * D2R,
+                (base.yaw + a.yaw) * D2R,
+                -(base.roll + a.roll) * D2R,
+                'YXZ',
+            );
+        setRot(this.torso, r.torso, p?.torso ?? REST_ROT);
+        setRot(this.head, r.head, p?.head ?? REST_ROT);
+
+        const apply = (
+            limb: Limb,
+            side: 1 | -1,
+            base: JointPose,
+            a: Readonly<JointPose>,
+            bendSign: 1 | -1,
+        ) => {
+            const forward = base.forward + a.forward;
+            const out = base.out + a.out;
+            const bend = base.bend + a.bend;
+            const bendIn = base.bendIn + a.bendIn;
+            limb.root.rotation.set(-forward * D2R, 0, out * D2R * side);
+            limb.joint.rotation.set(bendSign * bend * D2R, 0, -bendIn * D2R * side);
+        };
+        apply(this.limbs.armL, 1, r.armL, p?.armL ?? REST_JOINT, -1);
+        apply(this.limbs.armR, -1, r.armR, p?.armR ?? REST_JOINT, -1);
+        apply(this.limbs.legL, 1, r.legL, p?.legL ?? REST_JOINT, 1);
+        apply(this.limbs.legR, -1, r.legR, p?.legR ?? REST_JOINT, 1);
+    }
+
+    /** Copy the finite numeric fields of `src` into `cur`. Anything else (NaN, strings, undefined) is ignored. */
+    private assignRotation<T extends Rot3 | JointPose>(
+        cur: T,
+        src: Partial<T> | undefined,
+        fields: readonly (keyof T)[],
+    ) {
+        if (!src) return;
+        for (const f of fields) {
+            const v = src[f];
+            if (typeof v === 'number' && Number.isFinite(v)) cur[f] = v as T[keyof T];
+        }
+    }
+
+    private assignRotations(src: PartialPartRotations | undefined) {
+        if (!src) return;
+        this.assignRotation(this.rotations.head, src.head, ROT_FIELDS);
+        this.assignRotation(this.rotations.torso, src.torso, ROT_FIELDS);
+        this.assignRotation(this.rotations.armL, src.armL, JOINT_FIELDS);
+        this.assignRotation(this.rotations.armR, src.armR, JOINT_FIELDS);
+        this.assignRotation(this.rotations.legL, src.legL, JOINT_FIELDS);
+        this.assignRotation(this.rotations.legR, src.legR, JOINT_FIELDS);
+    }
+
+    /**
+     * Set the manual rotation of one part, in degrees. `head` and `torso` take `{ pitch, yaw, roll }`; the
+     * arms and legs take `{ forward, out, bend, bendIn }` (the same fields as in a pose). Only the fields you
+     * pass change; the others keep their current value. Takes effect immediately and keeps working while an
+     * animation plays: the animation's own rotation (`pose.head`, `pose.armL`, ...) is ADDED on top, so it
+     * only adds to or subtracts from this value. See PartRotations.
+     */
+    setPartRotation<P extends PartName>(part: P, rotation: Partial<PartRotation<P>>) {
+        this.assignRotations({ [part]: rotation } as PartialPartRotations);
+        this.placeRotations();
+    }
+
+    /**
+     * Replace all manual rotations. Parts and fields that are not given go back to 0, so the result depends
+     * only on the object passed in (`undefined` clears everything).
+     */
+    setPartRotations(rotations?: PartialPartRotations) {
+        const zero = zeroRotations();
+        for (const part of PART_NAMES) Object.assign(this.rotations[part], zero[part]);
+        this.assignRotations(rotations);
+        this.placeRotations();
+    }
+
+    /** Manual rotation of one part (a copy; does not include the animation's rotation). */
+    getPartRotation<P extends PartName>(part: P): PartRotation<P> {
+        return { ...this.rotations[part] };
+    }
+
+    /** Manual rotations of all parts (a copy; does not include the animation's rotations). */
+    getPartRotations(): PartRotations {
+        const out = zeroRotations();
+        for (const part of PART_NAMES) Object.assign(out[part], this.rotations[part]);
+        return out;
+    }
+
+    /** Set all manual rotations back to 0. */
+    resetPartRotations() {
+        this.setPartRotations();
     }
 
     // ---------------------------------------------------------------- Part offsets
