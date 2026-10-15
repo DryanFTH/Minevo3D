@@ -1,6 +1,6 @@
 {
     "name": "minevo3d",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Animated 3D Minecraft character viewer for React and vanilla JS with real bendable arms and legs, skins, capes, and animations. Built on three.js.",
     "keywords": [
         "minecraft",
@@ -18,7 +18,10 @@
     "license": "MIT",
     "author": "DryanFTH",
     "homepage": "https://github.com/DryanFTH/Minevo3D",
-    "repository": "DryanFTH/Minevo3D",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/DryanFTH/Minevo3D.git"
+    },
     "sideEffects": false,
     "type": "module",
     "main": "./dist/minevo3d.cjs",
