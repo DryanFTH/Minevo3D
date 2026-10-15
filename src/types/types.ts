@@ -137,3 +137,26 @@ export type PartOffsets = Record<PartName, Vec3>;
 
 /** Partial offsets: unspecified parts and axes are 0. */
 export type PartialPartOffsets = { [K in PartName]?: Partial<Vec3> };
+
+/**
+ * Manual rotation for every body part, set on the rig (`rig.setPartRotation`). `head` and `torso` use
+ * {@link Rot3}; the four limbs use {@link JointPose} (the same fields as in a pose). All angles are in degrees.
+ *
+ * These are the BASE rotation of each part. The animation / pose never replaces them: the value in the pose
+ * (`pose.head`, `pose.armL`, ...) is ADDED on top, so the animation only adds to or subtracts from what was set
+ * manually. 0 means "no manual rotation".
+ */
+export type PartRotations = {
+    head: Rot3;
+    torso: Rot3;
+    armL: JointPose;
+    armR: JointPose;
+    legL: JointPose;
+    legR: JointPose;
+};
+
+/** Rotation type used by one part: {@link Rot3} for `head` / `torso`, {@link JointPose} for the limbs. */
+export type PartRotation<P extends PartName = PartName> = PartRotations[P];
+
+/** Partial manual rotations: unspecified parts and fields are 0. */
+export type PartialPartRotations = { [K in PartName]?: Partial<PartRotations[K]> };
