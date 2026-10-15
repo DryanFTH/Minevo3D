@@ -146,8 +146,8 @@ export function ZoomAndFov() {
                         />
                         Keep the same size when FOV changes
                     </label>
-                    <button onClick={() => viewerRef.current?.zoomIn()}>＋</button>
-                    <button onClick={() => viewerRef.current?.zoomOut()}>－</button>
+                    <button onClick={() => viewerRef.current?.zoomBy(1.25)}>＋</button>
+                    <button onClick={() => viewerRef.current?.zoomBy(1 / 1.25)}>－</button>
                     <button onClick={() => viewerRef.current?.resetCamera()}>
                         Reset
                     </button>
