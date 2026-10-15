@@ -44,9 +44,9 @@ export const POSE_FLOATING: PartialPose = {
     offset: {
         armR: {
             x: 2,
-            y: -2
-        }
-    }
+            y: -2,
+        },
+    },
 };
 
 /** Sitting pose with horizontal thighs and vertical shins. */
@@ -79,7 +79,16 @@ export function mergePartial(...sources: Array<PartialPose | undefined>): Partia
             const v = (src as Obj)[key];
             if (v === undefined) continue;
 
-            out[key] = typeof v === 'number' ? v : mergePartial(out[key], v);
+            if (typeof v === 'number') {
+                out[key] = v;
+            } else if (typeof v === 'string') {
+                // Numeric strings (for example, from an <input>) count as numbers. Anything else is ignored
+                // instead of being walked character by character, which never terminates.
+                const n = Number(v);
+                if (v.trim() !== '' && Number.isFinite(n)) out[key] = n;
+            } else if (typeof v === 'object' && v !== null) {
+                out[key] = mergePartial(out[key], v);
+            }
         }
     }
 
