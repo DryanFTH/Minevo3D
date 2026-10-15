@@ -41,10 +41,7 @@ export function FloatingWithOrbExample() {
             <ReactMinevo3D
                 animation='float'
                 camera={{ azimuth: 30 }}
-                onReady={handle => {
-                    const viewer = handle.getViewer();
-                    if (!viewer) return;
-
+                onReady={viewer => {
                     const orb = new Mesh(
                         new CylinderGeometry(2.4, 2.4, 0.8, 8),
                         new MeshLambertMaterial({ color: 0xf2c230, emissive: 0x3a2c00 }),
@@ -81,10 +78,7 @@ export function FloatingWithOrb() {
                     <ReactMinevo3D
                         animation='float'
                         camera={{ azimuth: 30 }}
-                        onReady={handle => {
-                            const viewer = handle.getViewer();
-                            if (!viewer) return;
-
+                        onReady={viewer => {
                             const orb = new Mesh(
                                 new CylinderGeometry(2.4, 2.4, 0.8, 8),
                                 new MeshLambertMaterial({

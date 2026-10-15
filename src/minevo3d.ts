@@ -18,6 +18,7 @@ export {
     ZOOM_ABS_MAX,
 } from '@/rendering/camera';
 export type {
+    OrbitControlsOptions,
     CameraOptions,
     CameraState,
     CameraSetOptions,
