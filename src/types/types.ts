@@ -102,6 +102,15 @@ export interface Pose {
 
     /** Cape motion (only applies when a cape is loaded). See CapePose. */
     cape: CapePose;
+
+    /**
+     * Position offsets per body part, in skin pixels. These are ADDED to the offsets set on the rig
+     * (`rig.setPartOffset`), never replacing them: the rig holds the base position and the animation only
+     * moves the part away from it and back. Changing the rig offset while an animation plays therefore
+     * takes effect immediately and the animation keeps working on top of it. 0 means "no change".
+     * See PartOffsets for the coordinate space.
+     */
+    offset: PartOffsets;
 }
 
 export type DeepPartial<T> = {
@@ -112,3 +121,19 @@ export type DeepPartial<T> = {
 export type PartialPose = DeepPartial<Pose>;
 
 export type LimbName = 'armL' | 'armR' | 'legL' | 'legR';
+
+/** Body parts that can be moved: the head, the torso (everything above the waist), and the four limbs. */
+export type PartName = 'head' | 'torso' | LimbName;
+
+/**
+ * A position offset for every body part (skin pixels). Each offset is in the LOCAL space of the part's
+ * parent, so it follows the parent's rotation:
+ * - `torso` and the legs are relative to the whole character (affected by `pose.rotation`).
+ * - `head` and the arms are relative to the torso (they also follow `pose.torso` rotation), and moving the
+ *   torso moves the head, arms, and cape with it.
+ * The character faces +z, its LEFT side is +x, and +y is up.
+ */
+export type PartOffsets = Record<PartName, Vec3>;
+
+/** Partial offsets: unspecified parts and axes are 0. */
+export type PartialPartOffsets = { [K in PartName]?: Partial<Vec3> };
