@@ -22,7 +22,7 @@ import {
     type FrameInfo,
 } from '@/rendering/viewer';
 import type { SkinFilter, SkinInfo, SkinSource } from '@/skin/skin';
-import type { PartialPose } from '@/types/types';
+import type { PartialPartRotations, PartialPose } from '@/types/types';
 
 export type ReactMinevo3DProps = {
     /**
@@ -115,6 +115,17 @@ export type ReactMinevo3DProps = {
      * the mouse.
      */
     pose?: PartialPose;
+
+    /**
+     * Manual rotation (degrees) of the head, torso, and arm and leg joints, for example from rotation
+     * sliders. This is the base rotation of each part: the animation and `pose` are ADDED on top of it
+     * (they only add to or subtract from it), so it keeps working while an animation plays. Fields that
+     * are not given are 0. Changing the object updates the character immediately.
+     *
+     * `head` / `torso`: `{ pitch, yaw, roll }`. `armL` / `armR` / `legL` / `legR`:
+     * `{ forward, out, bend, bendIn }`.
+     */
+    partRotations?: PartialPartRotations;
 
     /**
      * Freeze the animation.
@@ -281,6 +292,7 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
             intensity = 1,
             transition = 0.25,
             pose,
+            partRotations,
             paused = false,
             blendWidth = 1.5,
 
@@ -349,6 +361,7 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
                 intensity: p.intensity,
                 transition: p.transition,
                 pose: p.pose,
+                partRotations: p.partRotations,
                 paused: p.paused,
                 camera: {
                     ...p.camera,
@@ -545,6 +558,10 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
         useEffect(() => {
             viewerRef.current?.setPose(pose);
         }, [pose]);
+
+        useEffect(() => {
+            viewerRef.current?.rig.setPartRotations(partRotations);
+        }, [partRotations]);
 
         useEffect(() => {
             const viewer = viewerRef.current;
