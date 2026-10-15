@@ -47,7 +47,12 @@ import {
     SkinTexture,
 } from '@/skin/skin';
 import { type SetSkinOptions, SkinSwitcher } from '@/skin/skinSwitcher';
-import type { PartialPartOffsets, PartialPose, Pose } from '@/types/types';
+import type {
+    PartialPartOffsets,
+    PartialPartRotations,
+    PartialPose,
+    Pose,
+} from '@/types/types';
 
 /**
  * User input settings. Includes every `OrbitControlsOptions` field (rotate, zoom, pan, speeds, damping,
@@ -107,6 +112,13 @@ export interface ViewerOptions {
      * later with `viewer.rig.setPartOffset()` / `setPartOffsets()`.
      */
     partOffsets?: PartialPartOffsets;
+
+    /**
+     * Manual rotation (degrees) of the head, torso, and arm and leg joints. This is the base rotation of each
+     * part: animations and `pose` are added on top of it instead of replacing it. Change it later with
+     * `viewer.rig.setPartRotation()` / `setPartRotations()`. See PartRotations.
+     */
+    partRotations?: PartialPartRotations;
 
     animation?: AnimationSource;
 
@@ -286,6 +298,7 @@ export class CharacterViewer {
             showOverlay: opts.showOverlay,
             blendWidth: opts.blendWidth,
             partOffsets: opts.partOffsets,
+            partRotations: opts.partRotations,
             wireframe: opts.wireframe,
             unlit: this.lightRig.unlit,
         });
