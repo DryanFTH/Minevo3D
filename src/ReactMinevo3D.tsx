@@ -2,39 +2,26 @@
 
 import {
     type CSSProperties,
+    type ForwardedRef,
     forwardRef,
     useEffect,
-    useImperativeHandle,
     useRef,
 } from 'react';
 
 import type { AnimationFn, AnimationSource } from '@/animation/animations';
-import type { PlayOptions } from '@/animation/controller';
 import type { CapeInfo, CapeSource } from '@/cape/cape';
 import type { CapePhysicsOptions } from '@/cape/capeRig';
-import type { SetCapeOptions } from '@/cape/capeSwitcher';
 import type { EaseFn, EaseName } from '@/character/pose';
-import type { ArmModel, CharacterRig } from '@/character/rig';
-import type { AutoRotateInput, AutoRotateOptions } from '@/rendering/autorotate';
-import type {
-    CameraAnimateOptions,
-    CameraAnimateTarget,
-    CameraOptions,
-    CameraState,
-} from '@/rendering/camera';
-import type {
-    CameraLightOptions,
-    GlobalLightOptions,
-    LightState,
-    Shading,
-} from '@/rendering/lights';
+import type { ArmModel } from '@/character/rig';
+import type { AutoRotateInput } from '@/rendering/autorotate';
+import type { CameraOptions, CameraState } from '@/rendering/camera';
+import type { CameraLightOptions, GlobalLightOptions, Shading } from '@/rendering/lights';
 import {
     CharacterViewer,
     type ControlsOptions,
     type FrameInfo,
 } from '@/rendering/viewer';
 import type { SkinFilter, SkinInfo, SkinSource } from '@/skin/skin';
-import type { SetSkinOptions } from '@/skin/skinSwitcher';
 import type { PartialPose } from '@/types/types';
 
 export type ReactMinevo3DProps = {
@@ -174,9 +161,15 @@ export type ReactMinevo3DProps = {
     autoRotate?: AutoRotateInput;
 
     /**
-     * Enable or disable controls, or specify options (`rotate`, `zoom`, `zoomSpeed`,
-     * `autoRotate`, `resetOnDoubleClick`). Defaults to drag-to-rotate with scroll zoom
-     * disabled.
+     * Enable or disable controls, or specify options. Input is handled by three.js
+     * `OrbitControls`, so the options mirror its settings: `rotate`, `zoom`, `pan`,
+     * `rotateSpeed`, `zoomSpeed`, `panSpeed`, `enableDamping`, `dampingFactor`,
+     * `screenSpacePanning`, `zoomToCursor`, `minDistance`, `maxDistance`, `mouseButtons`,
+     * `touches`, plus `autoRotate` and `resetOnDoubleClick`. Defaults to drag-to-rotate with
+     * scroll zoom and panning disabled.
+     *
+     * For anything else, use the live `OrbitControls` instance: `onReady={v => { v.controls... }}`
+     * or `ref.current.controls`.
      */
     controls?: boolean | ControlsOptions;
 
@@ -220,7 +213,12 @@ export type ReactMinevo3DProps = {
 
     maxPixelRatio?: number;
 
-    onReady?: (handle: ReactMinevo3DHandle) => void;
+    /**
+     * Called once after the viewer is created AND all props (skin, cape, pose, camera, etc.)
+     * have been applied. Receives the same `CharacterViewer` instance that the `ref` exposes.
+     * Calls made on it here are not overwritten by the initial prop synchronization.
+     */
+    onReady?: (viewer: ReactMinevo3DHandle) => void;
 
     /**
      * Called on each frame after the pose has been applied.
@@ -251,146 +249,16 @@ export type ReactMinevo3DProps = {
     alt?: string;
 };
 
-export type ReactMinevo3DHandle = {
-    play(animation: AnimationSource, options?: PlayOptions): void;
+/**
+ * What `ref` and `onReady` expose: the `CharacterViewer` itself. Kept as an alias so existing
+ * type imports keep working.
+ */
+export type ReactMinevo3DHandle = CharacterViewer;
 
-    /**
-     * Set pose overrides. Unspecified joints are unchanged; pass undefined to clear all
-     * overrides.
-     */
-    setPose(pose: PartialPose | undefined): void;
-
-    /**
-     * Change the skin imperatively. `{ resetAnimation: false }` (default) preserves the
-     * current animation; `{ resetAnimation: true, transition? }` restarts it when the new skin
-     * is applied. `null` uses the default skin. The promise rejects if loading fails and the
-     * current skin remains unchanged.
-     */
-    setSkin(source: SkinSource | null, options?: SetSkinOptions): Promise<SkinInfo>;
-
-    /**
-     * Load, change, or hide the cape imperatively. `{ resetAnimation: false }` (default)
-     * preserves the current animation; `{ resetAnimation: true, transition? }` restarts it
-     * when the change is applied. `true` uses the default cape; `null` or `false` hides it
-     * (resolving to `null`). The promise rejects if loading fails and the current cape remains
-     * unchanged.
-     */
-    setCape(
-        source: CapeSource | boolean | null,
-
-        options?: SetCapeOptions,
-    ): Promise<CapeInfo | null>;
-
-    /**
-     * Set secondary cape motion with a boolean or `{ stiffness, damping, gravity }` options.
-     */
-    setCapePhysics(options: boolean | CapePhysicsOptions): void;
-
-    screenshot(type?: string, quality?: number): string | null;
-
-    /**
-     * Set the zoom multiplier. Set `immediate` to skip easing.
-     */
-    setZoom(zoom: number, options?: { immediate?: boolean }): void;
-
-    /**
-     * Zoom in (default factor: 1.25).
-     */
-    zoomIn(factor?: number): void;
-
-    /**
-     * Zoom out (default factor: 1.25).
-     */
-    zoomOut(factor?: number): void;
-
-    getZoom(): number | null;
-
-    /**
-     * Set the vertical field of view in degrees. Set `immediate` to skip easing.
-     */
-    setFov(fov: number, options?: { immediate?: boolean }): void;
-
-    getFov(): number | null;
-
-    /**
-     * Return to the initial view. With `{ duration }`, animates and resolves to true when
-     * completed.
-     */
-    resetCamera(options?: CameraAnimateOptions): Promise<boolean>;
-
-    /**
-     * Animate camera properties: zoom, FOV, azimuth, polar, distance, and target. Resolves to
-     * true when completed or false when interrupted by user input or another animation on the
-     * same property.
-     */
-    animateCamera(
-        to: CameraAnimateTarget,
-
-        options?: CameraAnimateOptions,
-    ): Promise<boolean>;
-
-    /**
-     * Shorthand for `animateCamera({ zoom })`.
-     */
-    zoomTo(zoom: number, options?: CameraAnimateOptions): Promise<boolean>;
-
-    /**
-     * Shorthand for `animateCamera({ fov })`.
-     */
-    fovTo(fov: number, options?: CameraAnimateOptions): Promise<boolean>;
-
-    /**
-     * Stop the current camera animation.
-     */
-    stopCameraAnimation(): void;
-
-    getCameraState(): CameraState | null;
-
-    /**
-     * Set global lighting with a boolean or partial options object.
-     */
-    setGlobalLight(options: boolean | GlobalLightOptions): void;
-
-    /**
-     * Set camera lighting with a boolean or partial options object.
-     */
-    setCameraLight(options: boolean | CameraLightOptions): void;
-
-    setShading(shading: Shading): void;
-
-    getLightState(): LightState | null;
-
-    /**
-     * Set automatic rotation with a boolean, number, or partial options object.
-     */
-    setAutoRotate(options: AutoRotateInput): void;
-
-    startAutoRotate(): void;
-
-    stopAutoRotate(): void;
-
-    /**
-     * Return whether automatic rotation is enabled.
-     */
-    toggleAutoRotate(): boolean;
-
-    /**
-     * Return whether the camera is currently rotating, not merely enabled for rotation.
-     */
-    isAutoRotating(): boolean;
-
-    getAutoRotate(): (AutoRotateOptions & { enabled: boolean }) | null;
-
-    /**
-     * Access the rig (bones, hand positions, and more). Returns null before mounting.
-     */
-    getRig(): CharacterRig | null;
-
-    /**
-     * Access the Three.js viewer (scene, camera, renderer). Returns null before mounting.
-     */
-    getViewer(): CharacterViewer | null;
-};
+function assignRef<T>(ref: ForwardedRef<T>, value: T | null) {
+    if (typeof ref === 'function') ref(value);
+    else if (ref) ref.current = value;
+}
 
 export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>(
     function ReactMinevo3D(props, ref) {
@@ -455,65 +323,6 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
         const cameraTransitionRef = useRef(cameraTransition);
         cameraTransitionRef.current = cameraTransition;
 
-        // Expose viewer methods through the component ref.
-        const handle: ReactMinevo3DHandle = {
-            play: (a, o) => viewerRef.current?.play(a, o),
-            setPose: p => viewerRef.current?.setPose(p),
-
-            setSkin: (s, o) => {
-                if (!viewerRef.current) {
-                    return Promise.reject(new Error('Viewer is not ready.'));
-                }
-
-                return viewerRef.current.setSkin(s, o);
-            },
-            setCape: (c, o) => {
-                if (!viewerRef.current) {
-                    return Promise.reject(new Error('Viewer is not ready.'));
-                }
-
-                return viewerRef.current.setCape(c, o);
-            },
-            setCapePhysics: o => viewerRef.current?.setCapePhysics(o),
-
-            screenshot: (t, q) => viewerRef.current?.screenshot(t, q) ?? null,
-
-            setZoom: (z, o) => viewerRef.current?.setZoom(z, o),
-            zoomIn: (f = 1.25) => viewerRef.current?.zoomBy(f),
-            zoomOut: (f = 1.25) => viewerRef.current?.zoomBy(1 / f),
-            getZoom: () => viewerRef.current?.getZoom() ?? null,
-            setFov: (f, o) => viewerRef.current?.setFov(f, o),
-            getFov: () => viewerRef.current?.getFov() ?? null,
-
-            resetCamera: o => viewerRef.current?.resetCamera(o) ?? Promise.resolve(false),
-            animateCamera: (to, o) =>
-                viewerRef.current?.animateCamera(to, o) ?? Promise.resolve(false),
-            zoomTo: (z, o) => viewerRef.current?.zoomTo(z, o) ?? Promise.resolve(false),
-            fovTo: (f, o) => viewerRef.current?.fovTo(f, o) ?? Promise.resolve(false),
-            stopCameraAnimation: () => viewerRef.current?.stopCameraAnimation(),
-            getCameraState: () => viewerRef.current?.getCameraState() ?? null,
-
-            setGlobalLight: o => viewerRef.current?.setGlobalLight(o),
-            setCameraLight: o => viewerRef.current?.setCameraLight(o),
-            setShading: m => viewerRef.current?.setShading(m),
-            getLightState: () => viewerRef.current?.getLightState() ?? null,
-
-            setAutoRotate: o => viewerRef.current?.setAutoRotate(o),
-            startAutoRotate: () => viewerRef.current?.startAutoRotate(),
-            stopAutoRotate: () => viewerRef.current?.stopAutoRotate(),
-            toggleAutoRotate: () => viewerRef.current?.toggleAutoRotate() ?? false,
-            isAutoRotating: () => viewerRef.current?.isAutoRotating() ?? false,
-            getAutoRotate: () => viewerRef.current?.getAutoRotate() ?? null,
-
-            getRig: () => viewerRef.current?.rig ?? null,
-            getViewer: () => viewerRef.current,
-        };
-
-        const handleRef = useRef(handle);
-        handleRef.current = handle;
-
-        useImperativeHandle(ref, () => handleRef.current, []);
-
         // Create and dispose the viewer once per mount.
         useEffect(() => {
             const el = containerRef.current;
@@ -563,13 +372,18 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
             });
 
             viewerRef.current = viewer;
-            latest.current.onReady?.(handleRef.current);
 
             return () => {
                 viewer.dispose();
                 viewerRef.current = null;
             };
         }, []);
+
+        useEffect(() => {
+            assignRef(ref, viewerRef.current);
+
+            return () => assignRef(ref, null);
+        }, [ref]);
 
         // Load the skin and report load results.
         const firstSkin = useRef(true);
@@ -791,7 +605,7 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
             viewerRef.current?.setLights(lights);
         }, [lightsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        // Apply light settings only when provided to preserve changes made through the handle.
+        // Apply light settings only when provided to preserve changes made through the viewer.
         const globalLightKey = JSON.stringify(globalLight);
         useEffect(() => {
             if (globalLight === undefined) return;
@@ -824,6 +638,16 @@ export const ReactMinevo3D = forwardRef<ReactMinevo3DHandle, ReactMinevo3DProps>
         useEffect(() => {
             viewerRef.current?.setShadow(shadow);
         }, [shadow]);
+
+        // Keep this effect LAST: effects run in declaration order, so every prop has already
+        // been applied when `onReady` fires and its changes are not overwritten.
+        useEffect(() => {
+            const viewer = viewerRef.current;
+
+            if (!viewer) return;
+
+            latest.current.onReady?.(viewer);
+        }, []);
 
         return (
             <div
