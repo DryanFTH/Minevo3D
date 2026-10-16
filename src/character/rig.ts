@@ -112,6 +112,9 @@ interface LimbConfig {
     region: [number, number];
 
     overlayRegion: [number, number];
+
+    pivotX: number;
+    pivotDrop: number;
 }
 
 /**
@@ -140,7 +143,7 @@ export class Limb {
         const prev = this.root ? { root: this.root, joint: this.joint } : null;
         this.disposeMeshes();
         this.holder.clear();
-        this.jointY = -cfg.h * cfg.jointRatio;
+        this.jointY = -cfg.h * cfg.jointRatio + cfg.pivotDrop;
 
         this.base = this.makeMesh(0, cfg.region);
         this.overlay = this.makeMesh(0.5, cfg.overlayRegion);
@@ -172,10 +175,10 @@ export class Limb {
     }
 
     private makeMesh(inflate: number, reg: [number, number]) {
-        const { w, h, d } = this.cfg;
+        const { w, h, d, pivotX, pivotDrop } = this.cfg;
         const g = new BoxGeometry(w + inflate, h + inflate, d + inflate, 1, SEGMENTS, 1);
         remapUV(g, w + inflate, h + inflate, d + inflate, [reg[0], reg[1], w, h, d]);
-        g.translate(0, -h / 2, 0);
+        g.translate(-pivotX, -h / 2 + pivotDrop, 0);
 
         const position = g.getAttribute('position');
 
@@ -301,8 +304,8 @@ export class CharacterRig {
     private readonly base: Record<PartName, Vector3> = {
         head: new Vector3(0, 12, 0),
         torso: new Vector3(0, 12, 0),
-        armL: new Vector3(6, 12, 0),
-        armR: new Vector3(-6, 12, 0),
+        armL: new Vector3(5, 10, 0),
+        armR: new Vector3(-5, 10, 0),
         legL: new Vector3(2, 12, 0),
         legR: new Vector3(-2, 12, 0),
     };
@@ -359,8 +362,8 @@ export class CharacterRig {
         this.torso.add(this.cape.holder);
         if (opts.capePhysics !== undefined) this.capeDynamics.set(opts.capePhysics);
 
-        const leg = { w: 4, h: 12, d: 4, jointRatio: 0.5 };
-        const arm = { w: 4, h: 12, d: 4, jointRatio: 0.5 };
+        const leg = { w: 4, h: 12, d: 4, jointRatio: 0.5, pivotX: 0, pivotDrop: 0 };
+        const arm = { w: 4, h: 12, d: 4, jointRatio: 0.5, pivotDrop: 2 };
         // L is the character's left side (+x).
         this.limbs = {
             legL: new Limb(
@@ -372,11 +375,11 @@ export class CharacterRig {
                 this.state,
             ),
             armL: new Limb(
-                { ...arm, region: [32, 48], overlayRegion: [48, 48] },
+                { ...arm, pivotX: -1, region: [32, 48], overlayRegion: [48, 48] },
                 this.state,
             ),
             armR: new Limb(
-                { ...arm, region: [40, 16], overlayRegion: [40, 32] },
+                { ...arm, pivotX: 1, region: [40, 16], overlayRegion: [40, 32] },
                 this.state,
             ),
         };
@@ -704,7 +707,7 @@ export class CharacterRig {
                 limb.build({ ...limb.cfg, w });
                 rebuilt = true;
             }
-            this.base[name].set(side * (4 + w / 2), 12, 0);
+            this.base[name].set(side * 5, 10, 0);
         }
         this.placeParts();
         if (rebuilt) this.onRebuild?.();
