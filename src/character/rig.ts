@@ -299,7 +299,7 @@ export class CharacterRig {
 
     /** Normal (structural) position of each part, before any offsets. */
     private readonly base: Record<PartName, Vector3> = {
-        head: new Vector3(0, 16, 0),
+        head: new Vector3(0, 12, 0),
         torso: new Vector3(0, 12, 0),
         armL: new Vector3(6, 12, 0),
         armR: new Vector3(-6, 12, 0),
@@ -335,6 +335,10 @@ export class CharacterRig {
 
         const headBase = this.box(8, 8, 8, 0, [0, 0, 8, 8, 8]);
         const headOver = this.box(8, 8, 8, 1, [32, 0, 8, 8, 8], true);
+
+        headBase.position.y = 4;
+        headOver.position.y = 4;
+
         this.head.add(headBase, headOver);
 
         const bodyBase = this.box(8, 12, 4, 0, [16, 16, 8, 12, 4]);
