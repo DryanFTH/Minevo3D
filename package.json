@@ -1,6 +1,6 @@
 {
     "name": "minevo3d",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "description": "Animated 3D Minecraft character viewer for React and vanilla JS with real bendable arms and legs, skins, capes, and animations. Built on three.js.",
     "keywords": [
         "minecraft",
