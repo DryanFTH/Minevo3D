@@ -43,8 +43,7 @@ export const POSE_FLOATING: PartialPose = {
     legR: { forward: 40, out: 25, bend: 60 },
     offset: {
         armR: {
-            x: 2,
-            y: -2,
+            x: -1,
         },
     },
 };

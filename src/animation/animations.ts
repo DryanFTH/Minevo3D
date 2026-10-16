@@ -226,15 +226,14 @@ export function createWaveAnimation({
     return ({ time: t, intensity: k }) => ({
         [key]: {
             forward: 0,
-            out: 130,
+            out: 125,
             bend: 20,
             bendIn: sin(t * speed) * amplitude * k,
         },
         head: { roll: sin(t * speed * 0.5) * 3 * k },
         offset: {
-            armR: {
-                x: 1.6,
-                y: -2,
+            [key]: {
+                x: (side === 'R' ? 1 : -1) * -0.8,
             },
         },
     });
